@@ -1131,7 +1131,7 @@ dump_zap(objset_t *os, uint64_t object, void *data, size_t size)
 		    !!(zap_getflags(zc.zc_zap) & ZAP_FLAG_UINT64_KEY);
 
 		if (key64)
-			(void) printf("\t\t0x%010lx = ",
+			(void) printf("\t\t0x%010" PRIu64 "x = ",
 			    *(uint64_t *)attrp->za_name);
 		else
 			(void) printf("\t\t%s = ", attrp->za_name);
@@ -2152,13 +2152,20 @@ dump_brt(spa_t *spa)
 	if (dump_opt['T'] < 3)
 		return;
 
+	/* -TTT shows a per-vdev histograms; -TTTT shows all entries */
+	boolean_t do_histo = dump_opt['T'] == 3;
+
 	char dva[64];
-	printf("\n%-16s %-10s\n", "DVA", "REFCNT");
+
+	if (!do_histo)
+		printf("\n%-16s %-10s\n", "DVA", "REFCNT");
 
 	for (uint64_t vdevid = 0; vdevid < brt->brt_nvdevs; vdevid++) {
 		brt_vdev_t *brtvd = &brt->brt_vdevs[vdevid];
 		if (brtvd == NULL || !brtvd->bv_initiated)
 			continue;
+
+		uint64_t counts[64] = {};
 
 		zap_cursor_t zc;
 		zap_attribute_t *za = zap_attribute_alloc();
@@ -2172,14 +2179,26 @@ dump_brt(spa_t *spa)
 			    za->za_integer_length, za->za_num_integers,
 			    &refcnt));
 
-			uint64_t offset = *(const uint64_t *)za->za_name;
+			if (do_histo)
+				counts[highbit64(refcnt)]++;
+			else {
+				uint64_t offset =
+				    *(const uint64_t *)za->za_name;
 
-			snprintf(dva, sizeof (dva), "%" PRIu64 ":%llx", vdevid,
-			    (u_longlong_t)offset);
-			printf("%-16s %-10llu\n", dva, (u_longlong_t)refcnt);
+				snprintf(dva, sizeof (dva), "%" PRIu64 ":%llx",
+				    vdevid, (u_longlong_t)offset);
+				printf("%-16s %-10llu\n", dva,
+				    (u_longlong_t)refcnt);
+			}
 		}
 		zap_cursor_fini(&zc);
 		zap_attribute_free(za);
+
+		if (do_histo) {
+			printf("\nBRT: vdev %" PRIu64
+			    ": DVAs with 2^n refcnts:\n", vdevid);
+			dump_histogram(counts, 64, 0);
+		}
 	}
 }
 
@@ -4265,6 +4284,10 @@ dump_uberblock(uberblock_t *ub, const char *header, const char *footer)
 	(void) printf("\tguid_sum = %llu\n", (u_longlong_t)ub->ub_guid_sum);
 	(void) printf("\ttimestamp = %llu UTC = %s",
 	    (u_longlong_t)ub->ub_timestamp, ctime(&timestamp));
+
+	char blkbuf[BP_SPRINTF_LEN];
+	snprintf_blkptr(blkbuf, sizeof (blkbuf), &ub->ub_rootbp);
+	(void) printf("\tbp = %s\n", blkbuf);
 
 	(void) printf("\tmmp_magic = %016llx\n",
 	    (u_longlong_t)ub->ub_mmp_magic);
