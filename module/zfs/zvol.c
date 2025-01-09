@@ -752,6 +752,50 @@ out:
 	return (SET_ERROR(error));
 }
 
+/*
+ * Handles TX_CLONE_RANGE transactions.
+ */
+void
+zvol_log_clone_range(zilog_t *zilog, dmu_tx_t *tx, int txtype, uint64_t off,
+    uint64_t len, uint64_t blksz, const blkptr_t *bps, size_t nbps)
+{
+	itx_t *itx;
+	lr_clone_range_t *lr;
+	uint64_t partlen, max_log_data;
+	size_t partnbps;
+
+	if (zil_replaying(zilog, tx))
+		return;
+
+	max_log_data = zil_max_log_data(zilog, sizeof (lr_clone_range_t));
+
+	while (nbps > 0) {
+		partnbps = MIN(nbps, max_log_data / sizeof (bps[0]));
+		partlen = partnbps * blksz;
+		ASSERT3U(partlen, <, len + blksz);
+		partlen = MIN(partlen, len);
+
+		itx = zil_itx_create(txtype,
+		    sizeof (*lr) + sizeof (bps[0]) * partnbps);
+		lr = (lr_clone_range_t *)&itx->itx_lr;
+		lr->lr_foid = ZVOL_OBJ;
+		lr->lr_offset = off;
+		lr->lr_length = partlen;
+		lr->lr_blksz = blksz;
+		lr->lr_nbps = partnbps;
+		memcpy(lr->lr_bps, bps, sizeof (bps[0]) * partnbps);
+
+		zil_itx_assign(zilog, itx, tx);
+
+		bps += partnbps;
+		ASSERT3U(nbps, >=, partnbps);
+		nbps -= partnbps;
+		off += partlen;
+		ASSERT3U(len, >=, partlen);
+		len -= partlen;
+	}
+}
+
 static int
 zvol_replay_err(void *arg1, void *arg2, boolean_t byteswap)
 {
@@ -860,50 +904,6 @@ zvol_log_write(zvol_state_t *zv, dmu_tx_t *tx, uint64_t offset,
 
 	if (write_state == WR_COPIED || write_state == WR_NEED_COPY) {
 		dsl_pool_wrlog_count(zilog->zl_dmu_pool, sz, tx->tx_txg);
-	}
-}
-
-/*
- * Handles TX_CLONE_RANGE transactions.
- */
-void
-zvol_log_clone_range(zilog_t *zilog, dmu_tx_t *tx, int txtype, uint64_t off,
-    uint64_t len, uint64_t blksz, const blkptr_t *bps, size_t nbps)
-{
-	itx_t *itx;
-	lr_clone_range_t *lr;
-	uint64_t partlen, max_log_data;
-	size_t partnbps;
-
-	if (zil_replaying(zilog, tx))
-		return;
-
-	max_log_data = zil_max_log_data(zilog, sizeof (lr_clone_range_t));
-
-	while (nbps > 0) {
-		partnbps = MIN(nbps, max_log_data / sizeof (bps[0]));
-		partlen = partnbps * blksz;
-		ASSERT3U(partlen, <, len + blksz);
-		partlen = MIN(partlen, len);
-
-		itx = zil_itx_create(txtype,
-		    sizeof (*lr) + sizeof (bps[0]) * partnbps);
-		lr = (lr_clone_range_t *)&itx->itx_lr;
-		lr->lr_foid = ZVOL_OBJ;
-		lr->lr_offset = off;
-		lr->lr_length = partlen;
-		lr->lr_blksz = blksz;
-		lr->lr_nbps = partnbps;
-		memcpy(lr->lr_bps, bps, sizeof (bps[0]) * partnbps);
-
-		zil_itx_assign(zilog, itx, tx);
-
-		bps += partnbps;
-		ASSERT3U(nbps, >=, partnbps);
-		nbps -= partnbps;
-		off += partlen;
-		ASSERT3U(len, >=, partlen);
-		len -= partlen;
 	}
 }
 
