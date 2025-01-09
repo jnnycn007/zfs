@@ -82,7 +82,7 @@ tests = ['block_cloning_clone_mmap_cached',
     'block_cloning_copyfilerange_fallback_same_txg',
     'block_cloning_replay', 'block_cloning_replay_encrypted',
     'block_cloning_lwb_buffer_overflow', 'block_cloning_clone_mmap_write',
-    'block_cloning_rlimit_fsize']
+    'block_cloning_rlimit_fsize', 'block_cloning_large_offset']
 tags = ['functional', 'block_cloning']
 
 [tests/functional/bootfs]
@@ -676,8 +676,8 @@ post =
 tags = ['functional', 'deadman']
 
 [tests/functional/dedup]
-tests = ['dedup_legacy_create', 'dedup_fdt_create', 'dedup_fdt_import',
-    'dedup_legacy_create', 'dedup_legacy_import', 'dedup_legacy_fdt_upgrade',
+tests = ['dedup_fdt_create', 'dedup_fdt_import', 'dedup_legacy_create',
+    'dedup_legacy_import', 'dedup_legacy_fdt_upgrade',
     'dedup_legacy_fdt_mixed', 'dedup_quota']
 pre =
 post =
